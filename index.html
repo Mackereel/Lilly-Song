@@ -2,27 +2,33 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>データ検索ポータル</title>
+    <title>My Karaoke List</title>
     <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.basic.min.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 20px; line-height: 1.6; color: #333; }
-        .controls { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-        input, select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        .card { border: 1px solid #eee; padding: 15px; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .tag { background: #e0f2ff; color: #007bff; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; margin-right: 5px; cursor: pointer; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 20px; background: #f8f9fa; color: #333; }
+        .controls { display: flex; gap: 10px; margin-bottom: 25px; flex-wrap: wrap; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        input, select { padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+        #searchInput { flex-grow: 1; min-width: 200px; }
+        .card { background: white; border-radius: 10px; padding: 20px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-left: 5px solid #ff4757; }
+        .card h3 { margin: 0 0 5px 0; color: #2f3542; font-size: 1.2em; }
+        .artist { color: #57606f; font-weight: bold; margin-bottom: 10px; display: block; }
+        .furigana { font-size: 0.75em; color: #a4b0be; display: block; margin-top: -5px; }
+        .tags-container { margin: 10px 0; }
+        .tag { background: #f1f2f6; color: #57606f; padding: 3px 10px; border-radius: 15px; font-size: 0.8em; margin-right: 5px; border: 1px solid #dfe4ea; }
+        .genre { font-size: 0.85em; color: #747d8c; background: #f1f2f6; padding: 2px 8px; border-radius: 4px; }
+        .yt-link { display: inline-block; margin-top: 10px; color: #ff0000; text-decoration: none; font-size: 0.9em; font-weight: bold; }
+        .yt-link:hover { text-decoration: underline; }
+        .remarks { font-size: 0.9em; color: #2f3542; background: #fffaf0; padding: 10px; border-radius: 5px; margin-top: 10px; border: 1px dashed #ffd32a; }
     </style>
 </head>
 <body>
 
-    <h1>検索ポータル</h1>
+    <h1>🎤 My Karaoke List</h1>
 
     <div class="controls">
-        <input type="text" id="searchInput" placeholder="キーワードで検索...">
+        <input type="text" id="searchInput" placeholder="曲名、アーティスト、備考を検索...">
         <select id="tagFilter"><option value="">すべてのタグ</option></select>
-        <select id="sortOrder">
-            <option value="newest">新しい順</option>
-            <option value="oldest">古い順</option>
-        </select>
+        <select id="genreFilter"><option value="">すべてのジャンル</option></select>
     </div>
 
     <div id="results">読み込み中...</div>
@@ -36,56 +42,61 @@ fetch('data.json')
     .then(res => res.json())
     .then(data => {
         database = data;
-        setupTagFilter(data);
-        render(database);
+        setupFilters(data);
+        render();
     });
 
-// 2. タグの選択肢を自動生成
-function setupTagFilter(data) {
+function setupFilters(data) {
     const tags = new Set();
-    data.forEach(item => (item.タグ || []).forEach(t => tags.add(t)));
-    const filter = document.getElementById('tagFilter');
-    tags.forEach(t => {
-        const op = document.createElement('option');
-        op.value = op.textContent = t;
-        filter.appendChild(op);
+    const genres = new Set();
+    data.forEach(item => {
+        (item.tags || []).forEach(t => tags.add(t));
+        if(item.ジャンル) genres.add(item.ジャンル);
     });
+    
+    const tagSel = document.getElementById('tagFilter');
+    tags.forEach(t => { const op = document.createElement('option'); op.value = op.textContent = t; tagSel.appendChild(op); });
+    
+    const genSel = document.getElementById('genreFilter');
+    genres.forEach(g => { const op = document.createElement('option'); op.value = op.textContent = g; genSel.appendChild(op); });
 }
 
-// 3. 検索・絞り込み・ソートの実行
 function render() {
     let filtered = [...database];
     const keyword = document.getElementById('searchInput').value;
     const tag = document.getElementById('tagFilter').value;
-    const sort = document.getElementById('sortOrder').value;
+    const genre = document.getElementById('genreFilter').value;
 
     if (keyword) {
-        const fuse = new Fuse(filtered, { keys: ['タイトル', '内容'] }); // 検索対象の項目名に合わせる
+        // 検索対象を実情に合わせて設定
+        const fuse = new Fuse(filtered, { keys: ['曲名', 'フリガナ', 'アーティスト', '備考'] });
         filtered = fuse.search(keyword).map(r => r.item);
     }
-    if (tag) {
-        filtered = filtered.filter(item => (item.タグ || []).includes(tag));
-    }
-    
-    // ソート（日付の項目名が「日付」であると想定）
-    filtered.sort((a, b) => {
-        return sort === 'newest' ? new Date(b.日付) - new Date(a.日付) : new Date(a.日付) - new Date(b.日付);
-    });
+    if (tag) filtered = filtered.filter(item => (item.tags || []).includes(tag));
+    if (genre) filtered = filtered.filter(item => item.ジャンル === genre);
 
     resultsElement.innerHTML = filtered.map(item => `
         <div class="card">
-            <h3>${item.タイトル || '無題'}</h3>
-            <p>${item.内容 || ''}</p>
-            <div>${(item.タグ || []).map(t => `<span class="tag">${t}</span>`).join('')}</div>
-            <small>${item.日付 || ''}</small>
+            <span class="furigana">${item.フリガナ || ''}</span>
+            <h3>${item.曲名 || '無題'}</h3>
+            <span class="artist">👤 ${item.アーティスト || '不明'}</span>
+            <span class="genre">📂 ${item.ジャンル || '未分類'}</span>
+            
+            <div class="tags-container">
+                ${(item.tags || []).map(t => `<span class="tag">#${t}</span>`).join('')}
+            </div>
+
+            ${item.備考 ? `<div class="remarks">💡 ${item.備考}</div>` : ''}
+            
+            ${item.カラオケ音源のYoutubeURL ? 
+                `<a href="${item.カラオケ音源のYoutubeURL}" target="_blank" class="yt-link">▶️ YouTube音源で練習</a>` : ''}
         </div>
-    `).join('') || '見つかりませんでした。';
+    `).join('') || '<p>該当する曲が見つかりませんでした。</p>';
 }
 
-// イベント設定
 document.getElementById('searchInput').oninput = render;
 document.getElementById('tagFilter').onchange = render;
-document.getElementById('sortOrder').onchange = render;
+document.getElementById('genreFilter').onchange = render;
 </script>
 </body>
 </html>
