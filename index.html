@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>データ検索ポータル</title>
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.basic.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; color: #333; }
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        input, select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .card { border: 1px solid #eee; padding: 15px; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .tag { background: #e0f2ff; color: #007bff; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; margin-right: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <h1>検索ポータル</h1>
+
+    <div class="controls">
+        <input type="text" id="searchInput" placeholder="キーワードで検索...">
+        <select id="tagFilter"><option value="">すべてのタグ</option></select>
+        <select id="sortOrder">
+            <option value="newest">新しい順</option>
+            <option value="oldest">古い順</option>
+        </select>
+    </div>
+
+    <div id="results">読み込み中...</div>
+
+<script>
+let database = [];
+const resultsElement = document.getElementById('results');
+
+// 1. データの読み込み
+fetch('data.json')
+    .then(res => res.json())
+    .then(data => {
+        database = data;
+        setupTagFilter(data);
+        render(database);
+    });
+
+// 2. タグの選択肢を自動生成
+function setupTagFilter(data) {
+    const tags = new Set();
+    data.forEach(item => (item.タグ || []).forEach(t => tags.add(t)));
+    const filter = document.getElementById('tagFilter');
+    tags.forEach(t => {
+        const op = document.createElement('option');
+        op.value = op.textContent = t;
+        filter.appendChild(op);
+    });
+}
+
+// 3. 検索・絞り込み・ソートの実行
+function render() {
+    let filtered = [...database];
+    const keyword = document.getElementById('searchInput').value;
+    const tag = document.getElementById('tagFilter').value;
+    const sort = document.getElementById('sortOrder').value;
+
+    if (keyword) {
+        const fuse = new Fuse(filtered, { keys: ['タイトル', '内容'] }); // 検索対象の項目名に合わせる
+        filtered = fuse.search(keyword).map(r => r.item);
+    }
+    if (tag) {
+        filtered = filtered.filter(item => (item.タグ || []).includes(tag));
+    }
+    
+    // ソート（日付の項目名が「日付」であると想定）
+    filtered.sort((a, b) => {
+        return sort === 'newest' ? new Date(b.日付) - new Date(a.日付) : new Date(a.日付) - new Date(b.日付);
+    });
+
+    resultsElement.innerHTML = filtered.map(item => `
+        <div class="card">
+            <h3>${item.タイトル || '無題'}</h3>
+            <p>${item.内容 || ''}</p>
+            <div>${(item.タグ || []).map(t => `<span class="tag">${t}</span>`).join('')}</div>
+            <small>${item.日付 || ''}</small>
+        </div>
+    `).join('') || '見つかりませんでした。';
+}
+
+// イベント設定
+document.getElementById('searchInput').oninput = render;
+document.getElementById('tagFilter').onchange = render;
+document.getElementById('sortOrder').onchange = render;
+</script>
+</body>
+</html>
